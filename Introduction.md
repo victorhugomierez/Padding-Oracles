@@ -37,3 +37,46 @@ Example (block size = 8):
 
 - Final block ends with ...030303.
 
+## PKCS#7 Padding (Block Size = 8)
+Concept
+Block ciphers such as AES require each block to be of a fixed size (in this case, 8 bytes).
+
+If the plaintext is shorter than this size, padding bytes are added.
+
+Each padding byte has a value equal to the number of bytes added.
+
+If the text is already a multiple of the block size, a full block of padding is added.
+
+Reference table:
+
+![Cryptography Basics](assets/img01.png)
+
+
+### Practical examples
+- Message: ‘victor’
+
+Length = 6 bytes → 6 mod 8 = 6
+
+2 bytes of padding are added → 0x02 0x02
+
+Result: victor\x02\x02
+
+- Message: ‘hugo’
+
+Length = 4 bytes → 4 mod 8 = 4
+
+4 padding bytes are added → 0x04 0x04 0x04 0x04
+
+Result: hugo\x04\x04\x04\x04
+
+- Message: ‘mierez’
+
+Length = 6 bytes → 6 mod 8 = 6
+
+2 bytes of padding are added → 0x02 0x02
+
+Result: mierez\x02\x02
+
+- Each message is independently adjusted to the 8-byte block size, ensuring it can be correctly encrypted using AES or another block cipher.
+
+![Cryptography Basics](assets/img02.png)
