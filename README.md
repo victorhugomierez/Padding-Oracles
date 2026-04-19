@@ -75,4 +75,4 @@ python3 scripts/oracle_attack.py
 
 ---
 
-Would you like me to also prepare a **bilingual version (English/Spanish)** of this README so your portfolio reflects your bilingual documentation preference and appeals to international recruiters?
+
