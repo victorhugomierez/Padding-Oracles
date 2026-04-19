@@ -1089,3 +1089,112 @@ P1 = 54 72 79 48 61 63 6b 4d 65 06 06 06 06 06 06 06
 and after removing the padding (0x06), you'll get ‘victorhugo’.
 
 
+## PadBuster – Automating the Padding Oracle Attack
+
+- Encrypted Text  
+An attacker begins with the ciphertext, often embedded in cookies, query parameters, or POST data within a web application.
+
+- Oracle URL  
+The vulnerability arises when a system endpoint reveals whether submitted ciphertext results in valid or invalid padding. This behaviour effectively turns the endpoint into an “oracle”.
+
+- PadBuster Automation  
+PadBuster, a Perl‑based tool, automates the exploitation process. It manipulates the ciphertext byte by byte, submits each variation to the oracle URL, and interprets the server’s responses. When valid padding is detected, PadBuster calculates the intermediate values and reconstructs the plaintext without requiring the secret key.
+
+- This presentation highlights how PadBuster streamlines what would otherwise be a laborious manual attack, making it a widely used tool for demonstrating and exploiting padding oracle vulnerabilities.
+
+### Basic Decryption Example
+
+```bash
+perl padBuster.pl http://target-site.com/vulnerable.php \
+  "88124e09e20eab43f7c3232d925a1aee" \
+  16
+```
+- http://target-site.com/vulnerable.php → the vulnerable endpoint (oracle URL).
+
+- "88124e09..." → ciphertext you want to decrypt (often from a cookie or query string).
+
+- 16 → block size (AES uses 16 bytes).
+
+- PadBuster will brute‑force byte by byte, using the server’s padding responses to reconstruct the plaintext.
+
+### Decrypting a Cookie
+
+```bash
+perl padBuster.pl http://target-site.com/login.php \
+  "bdcc4a2319946dc9b30203d89dba9fce" \
+  16 \
+  -cookie "SESSION=bdcc4a2319946dc9b30203d89dba9fce"
+```
+
+- Here the ciphertext is inside a cookie (SESSION).
+
+- PadBuster automatically replaces the cookie value with modified ciphertexts and interprets the server’s responses.
+
+### Multiple Blocks
+
+```bash
+perl padBuster.pl http://target-site.com/data.php \
+  "7052bfef4553d8295afa7cf91b495af6d0c3323534373639383b3a3d3c3f3e21" \
+  16 \
+  -encoding 0
+```
+- PadBuster can handle ciphertexts spanning multiple blocks.
+
+- It will iterate through each block, reconstructing the plaintext sequentially.
+
+### Custom Parameters
+
+```bash 
+perl padBuster.pl http://target-site.com/api.php \
+  "ciphertext_here" \
+  16 \
+  -post "data=ciphertext_here" \
+  -encoding 0
+```
+
+- Useful when the ciphertext is passed via POST data instead of cookies or query strings.
+
+- encoding 0 tells PadBuster not to apply URL encoding.
+
+These examples show how PadBuster adapts to different contexts: cookies, query parameters, POST bodies, and multi‑block ciphertexts. It automates the brute‑force loop and padding validation, saving you from writing your own script.
+
+# Padding Oracle – Pentester Practices
+### Black‑Box Testing
+
+- Identify encrypted data in cookies, query parameters, or server responses.
+
+- Modify ciphertext byte‑by‑byte and observe error messages or behaviour that reveal padding issues.
+
+### Grey‑Box Testing
+
+- With partial access to source code or API documentation, analyse how padding errors are handled.
+
+- Craft targeted ciphertexts and monitor server responses for exploitable differences.
+
+### Automation
+
+- Use tools such as PadBuster to automate ciphertext manipulation and oracle response analysis, increasing efficiency and accuracy.
+
+# Mitigation Measures – Secure Coding
+
+- Authenticated Encryption
+
+- Use AES‑GCM or AES‑CCM, which combine encryption and authentication to prevent ciphertext tampering.
+
+### Error Handling
+
+- Do not reveal detailed error messages (e.g. “invalid padding”) in production environments.
+
+- Generic error responses reduce information leakage.
+
+### Input Validation
+
+- Reject malformed ciphertext before attempting decryption.
+
+- Filter invalid input securely to avoid unnecessary cryptographic operations.
+
+### Updated Libraries
+
+- Keep cryptographic libraries patched and current to avoid known vulnerabilities.
+
+This way, pentesters see the exploitation workflow, while developers see the defensive measures. The lock icon you mentioned works perfectly as a visual cue to highlight the “secure coding” section.
