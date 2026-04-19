@@ -737,3 +737,98 @@ When decrypting with an incorrect IV, the algorithm still works, but the final X
 When you performed the complete cycle in your script (tres.py), encrypting and decrypting with the same key and IV, you recovered exactly ```THM{Encryption_007}```. This proves that your code is correct.
 
 Conclusion: The problem isn't with my script, but rather that the ciphertext you were testing doesn't correspond to the key and IV combination you expected. In CBC, the initialization vector (IV) is as important as the key: without the correct IV, the first block is never retrieved correctly and all the plaintext changes.
+
+# Padding Oracle Attack – Foundation
+The attack leverages the way CBC mode handles padding during decryption. If a system reveals whether padding is valid or invalid (the “oracle”), an attacker can iteratively manipulate ciphertext blocks to recover the plaintext without knowing the secret key.
+
+Core Formula
+𝑃𝑖=𝐷𝑘(𝐶𝑖)XOR𝐶𝑖−1𝑃𝑖: plaintext block being recovered
+
+𝐷𝑘(𝐶𝑖): intermediate value obtained by decrypting ciphertext block 
+𝐶𝑖 with the secret key 𝑘
+
+𝐶𝑖−1: the previous ciphertext block (or IV for the first block)
+
+- Here, Pi ​ represents the plaintext of the ith block, Dk​(Ci) is the decrypted ciphertext or the intermediate value using the key k, and Ci−1 ​ is the ciphertext of the previous block (or IV for the first block). This formula is crucial in exploiting padding vulnerabilities, highlighting the relationship between plaintext, ciphertext, and decryption. The attack focuses on uncovering Dk(Ci) byte by byte by interacting with the oracle, which reveals whether the padding is valid or not. This method doesn't directly expose the plaintext but progressively reveals the intermediary decryption state Dk(Ci).
+
+### Great, now let’s move on to the theoretical part of the Padding Oracle Attack as applied to your example with “victorhugo”.
+
+- Given scenario
+IV (C₀): 31 31 31 31 31 31 31 31 31 31 31 31 31 31 31 31  
+→ This is the ASCII character ‘1’ repeated 16 times.
+
+Ciphertext (C₁): 88 12 4e 09 e2 0e ab 43 f7 c3 23 2d 92 5a 1a ee  
+→ A single 16-byte block.
+
+In CBC, the decryption formula is:
+
+𝑃𝑖=𝐷𝑘(𝐶𝑖)⊕𝐶𝑖−1
+
+- How the Attack Works
+Oracle Response
+
+The attacker sends modified ciphertexts to the system.
+
+The system responds differently depending on whether the padding is valid or invalid.
+
+Byte‑by‑Byte Recovery
+
+By carefully flipping bits in 𝐶𝑖−1, the attacker can force the decrypted output of 
+𝐶𝑖 to produce valid padding.
+
+Each valid response leaks information about the intermediate value 
+𝐷𝑘(𝐶𝑖).
+
+Plaintext Extraction
+
+Once 𝐷𝑘(𝐶𝑖) is deduced, the attacker computes:
+
+𝑃𝑖=𝐷𝑘(𝐶𝑖)⊕𝐶𝑖−1
+Repeating this process block by block reveals the entire plaintext.
+
+- Key Insight
+The vulnerability arises not from AES itself, but from improper error handling in CBC mode. If an application distinguishes between “padding error” and “MAC error” (or leaks timing differences), it becomes an oracle that attackers can exploit.
+
+### Great, now let’s move on to the theoretical part of the Padding Oracle Attack as applied to your example with “victorhugo”.
+
+- Given scenario
+IV (C₀): 31 31 31 31 31 31 31 31 31 31 31 31 31 31 31 31  
+→ This is the ASCII character ‘1’ repeated 16 times.
+
+Ciphertext (C₁): 88 12 4e 09 e2 0e ab 43 f7 c3 23 2d 92 5a 1a ee  
+→ A single 16-byte block.
+
+In CBC, the decryption formula is:
+
+𝑃𝑖=𝐷𝑘(𝐶𝑖)⊕𝐶𝑖−1
+
+- where:
+
+𝑃𝑖 = plaintext block,
+
+𝐷𝑘(𝐶𝑖) = result of decrypting the block using the key,
+
+𝐶𝑖−1 = previous block (or IV if it is the first).
+
+- The attack concept
+The attacker does not know the key, but can send modified ciphertexts to a system that responds by indicating whether the padding is valid or not.
+
+The process begins by manipulating the last byte of the IV (or of the previous block).
+
+If the system responds with “valid padding”, the attacker deduces the value of that byte in the plaintext.
+
+The IV is then adjusted to force different padding values, and the process is repeated byte by byte, working backwards.
+
+- Initial step
+Objective: to recover the last byte of the plaintext.
+
+Action: modify the last byte of the IV (31 in hex) and send the ciphertext to the system.
+
+- System response:
+
+If the padding is invalid → the value tested does not match.
+
+If the padding is valid → the correct value of the last byte of the plaintext has been found.
+
+Once that byte has been recovered, the attacker adjusts the IV to force a padding of 0x02 and repeats the process for the penultimate byte, and so on.
+
