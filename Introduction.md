@@ -832,3 +832,260 @@ If the padding is valid → the correct value of the last byte of the plaintext 
 
 Once that byte has been recovered, the attacker adjusts the IV to force a padding of 0x02 and repeats the process for the penultimate byte, and so on.
 
+## Step 1: Targeting the Last Byte
+
+We will begin by modifying the last byte of the IV (C0[16] or test[16]) to reveal the last byte of the intermediate decrypted block (Dk​(C1)[16]). The oracle is used to check if the padding is valid. If so, then we know that:
+
+Dk​(C1​)[16] XOR test[16] = 0x01
+
+In the above figure, it is important to note that if the padding is valid, the last byte in the plaintext is supposed to be 0x01. From this, we will calculate:
+
+Dk (C1)[16] = test[16] XOR 0x01
+
+- For example, if the valid guess is test[16]=0x37, then:
+
+Dk(C1)[16] = 0x37 XOR 0x01 = 0x36
+
+Once Dk(C1)[16] is known, we will use the formula to find the plaintext byte P1[16] = Dk(C1)[16] XOR C0[16].
+
+If we substitute the real numbers:
+
+P1[16] = 0x37 XOR 0x31 = 0x06
+
+This reveals the last byte of the plaintext block.
+
+## Step 2: Moving to the Second-to-Last Byte
+
+Next, we will target the second-to-last byte of C1. We will modify C0[15] while fixing C0[16] to ensure valid padding of 0x02 0x02. To reveal Dk(C1)[15], the oracle checks if:
+
+Dk(C1)[15] XOR test[15] = 0x02
+
+When the padding is valid, we will calculate:
+
+Dk(C1)[15] = test[15] XOR 0x02
+
+For instance, if test[15]=0x34, then:
+
+Dk(C1)[15] = 0x34 XOR 0x02 = 0x36
+
+The plaintext byte is then recovered using:
+
+P1[15] = Dk(C1)[15] XOR C0[15]
+
+Substituting again :
+
+P1[15] = 0x36 XOR 0x31 = 0x7
+
+## Step 3: Revealing All Bytes in the Block
+
+Now, as an attacker, we will continue this process for all bytes in the block, working from the last byte to the first byte. For each byte, we will modify the test byte to match the required padding value and then calculate Dk(C1)[i] once valid padding is found. Once we get that, we derive the plaintext byte P1[i] using the formula  P1[i] = Dk(C1)[i] XOR C0[i]. By the end of the process, we will fully recover the plaintext block.
+
+## Step 4: Final Plaintext Recovery
+After iterating through each byte of the block using the oracle responses, you reconstruct the entire plaintext block.
+
+For your ciphertext block 
+𝐶1, the recovered plaintext is: 
+P1 = 54 72 79 48 61 63 6b 4d 65 06 06 06 06 06 06 06
+
+- The trailing 0x06 values are PKCS#7 padding.
+
+- Removing the padding yields:
+
+```
+victorhugo
+```
+
+## Backend Attack Logic
+1. Outer loop
+
+Iterates over each byte position in the block (starting from the last byte and moving backwards).
+
+Goal: recover one plaintext byte at a time.
+
+2. Inner loop
+
+Tries all 256 possible values (0–255) for the chosen byte in the modified_iv.
+
+Each guess is sent to the server along with the ciphertext.
+
+3. Oracle check
+
+The server responds with either “valid padding” or “invalid padding.”
+
+A “valid padding” response means the guess produced a correct padding structure, which leaks information about the intermediate value.
+
+4. Keystream computation
+
+Once a valid guess is found, the script calculates the intermediate value and then derives the plaintext byte using:
+
+𝑃𝑖=𝐷𝑘(𝐶𝑖)⊕𝐶𝑖−1
+
+
+5. Repeat
+
+The process continues for the next byte, adjusting previously recovered bytes to enforce correct padding values.
+
+Eventually, the entire plaintext block is reconstructed.
+
+### Simplified Pseudocode
+
+```python
+for pos in range(block_size-1, -1, -1):   # work backwards
+    for guess in range(256):              # brute force all byte values
+        modified_iv = iv.copy()
+        modified_iv[pos] = guess
+
+        response = send_to_server(modified_iv, ciphertext)
+
+        if response == "Valid Padding":
+            intermediate = guess ^ padding_value
+            plaintext_byte = intermediate ^ original_iv[pos]
+            recovered_plaintext[pos] = plaintext_byte
+            break
+```
+##  Locally, you need an Oracle that actually attempts to decrypt using AES-CBC and checks the padding. In other words:
+
+Define a real key and IV.
+
+Use Crypto.Cipher.AES to decrypt the modified ciphertext.
+
+Attempt to call unpad().
+
+If the padding is valid → return True.
+
+If an exception is thrown → return False.
+
+```python 
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import unpad
+
+key = b"abcdefghijklmnop"  # 16-byte key
+iv = b"1111111111111111"   # 16-byte IV (ejemplo)
+
+def oracle_check(modified_ct):
+    try:
+        cipher = AES.new(key, AES.MODE_CBC, iv)
+        decrypted = cipher.decrypt(modified_ct)
+        unpad(decrypted, AES.block_size)  # intenta quitar padding
+        return True
+    except ValueError:
+        return False
+```
+- What happens next
+Every time the loop generates a modified_ct, the oracle will attempt to decrypt it.
+
+If the padding is valid, it returns True and the script appends the corresponding byte to the plaintext.
+
+This way, you’ll see the text being reconstructed.
+
+```python
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import pad, unpad
+from binascii import hexlify
+
+BLOCK_SIZE = 16
+MAX_BYTE_VALUE = 255
+
+# Clave y IV reales (ejemplo)
+key = b"abcdefghijklmnop"   # 16 bytes
+iv = b"1111111111111111"    # 16 bytes
+
+# Texto plano original
+plaintext = b"victorhugo"
+
+# --- Encriptar para generar ciphertext ---
+cipher_enc = AES.new(key, AES.MODE_CBC, iv)
+ciphertext = cipher_enc.encrypt(pad(plaintext, BLOCK_SIZE))
+
+print("Ciphertext (hex):", ciphertext.hex())
+
+# --- Oracle local: valida padding ---
+def oracle_check(modified_ct):
+    try:
+        cipher = AES.new(key, AES.MODE_CBC, iv)
+        decrypted = cipher.decrypt(modified_ct)
+        unpad(decrypted, BLOCK_SIZE)  # intenta quitar padding
+        return True
+    except ValueError:
+        return False
+
+# --- Ataque Padding Oracle ---
+modified_iv = bytearray(iv)
+keystream = []
+recovered_plaintext = []
+
+for iv_index in reversed(range(BLOCK_SIZE)):
+    padding = BLOCK_SIZE - iv_index
+    for byte_value in range(MAX_BYTE_VALUE + 1):
+        modified_iv[iv_index] = byte_value
+        modified_ct = bytes(modified_iv) + ciphertext
+
+        if oracle_check(modified_ct):
+            # Calcular keystream y plaintext
+            keystream_byte = byte_value ^ padding
+            keystream.append(keystream_byte)
+
+            plaintext_byte = iv[iv_index] ^ keystream_byte
+            recovered_plaintext.insert(0, plaintext_byte)
+
+            print(f"Recovered byte at position {iv_index}: {plaintext_byte:02x}")
+            break
+
+print("\nRecovered plaintext (hex):", bytes(recovered_plaintext).hex())
+print("Recovered plaintext (ascii):", bytes(recovered_plaintext).decode(errors="ignore"))
+```
+
+Request: 
+
+```bash
+
+ python3 uno.py 
+Recovered byte at position 15: d0
+Recovered byte at position 14: 33
+Recovered byte at position 13: 32
+Recovered byte at position 12: 35
+Recovered byte at position 11: 34
+Recovered byte at position 10: 37
+Recovered byte at position 9: 36
+Recovered byte at position 8: 39
+Recovered byte at position 7: 38
+Recovered byte at position 6: 3b
+Recovered byte at position 5: 3a
+Recovered byte at position 4: 3d
+Recovered byte at position 3: 3c
+Recovered byte at position 2: 3f
+Recovered byte at position 1: 3e
+Recovered byte at position 0: 21
+
+Recovered plaintext (hex): 213e3f3c3d3a3b3839363734353233d0
+Recovered plaintext (ascii): !>?<=:;89674523
+```
+
+- Why did you get !>?<=:;89674523?
+The attack depends on three parameters: the key, the IV and the ciphertext.
+
+In your script, the ciphertext (7052bfef...) was generated locally using your key and IV, not the theoretical block (88124e09...).
+
+When applying the attack to that ciphertext, the result is another valid plaintext (in your case !>?<=:;89674523), but not the expected ‘victorhugo’.
+
+- How to recover ‘victorhugo’
+Use the exact IV and ciphertext from the theoretical example:
+
+IV: 31313131313131313131313131313131
+
+- Ciphertext: 88124e09e20eab43f7c3232d925a1aee
+
+Do not generate a new ciphertext using encrypt().
+
+Feed these values directly into the attack.
+
+The byte-by-byte process should reconstruct:
+
+- The byte-by-byte process should reconstruct:
+
+```
+P1 = 54 72 79 48 61 63 6b 4d 65 06 06 06 06 06 06 06
+```
+and after removing the padding (0x06), you'll get ‘victorhugo’.
+
+
